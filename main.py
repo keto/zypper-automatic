@@ -6,8 +6,10 @@ import time
 import configparser
 import sys
 import logging
-
 import requests
+
+error_occurred = False
+update_occurred = False
 
 def parse_config(path):
     config = configparser.ConfigParser()
@@ -33,6 +35,7 @@ def check_root():
         sys.exit()
 
 def refresh_repos():
+    global error_occurred
     for i in range(0, 2):
         try:
             logging.info("Refreshing repositories...")
@@ -41,16 +44,19 @@ def refresh_repos():
             break
         except subprocess.CalledProcessError as e:
             err = e
+            error_occurred = True
             time.sleep(300)
             continue
     else:
         logging.warning("An error occured while refreshing repos. See output below.")
         print(err.output)
         output = err.output
+        error_occurred = True
 
     return output
 
 def list_patches():
+    global error_occurred
     try:
         logging.info("Retrieving list of all patches...")
         output = subprocess.check_output(["zypper", "list-patches"])
@@ -58,10 +64,13 @@ def list_patches():
         logging.warning("An error occured while listing patches. See output below.")
         print(err.output)
         output = err.output
+        error_occurred = True
 
     return output
 
 def install_patches(categories, with_interactive):
+    global error_occurred
+    global update_occurred
     command = ["zypper", "patch", "--no-confirm", "--details"]
 
     if categories != '':
@@ -89,7 +98,8 @@ def install_patches(categories, with_interactive):
 
     try:
         logging.info("Installing patches...")
-        output = subprocess.check_output(command)
+        output = subprocess.check_output(command, env={'LANG': 'POSIX'})
+        update_occurred = b"Nothing to do." not in output
     except subprocess.CalledProcessError as err:
         if err.returncode == 102:
             logging.info("Reboot required.")
@@ -97,6 +107,7 @@ def install_patches(categories, with_interactive):
         else:
             logging.warning("An error occured while installing patches. See output below.")
             print(err.output)
+            error_occurred = True
 
     return output
 
@@ -148,6 +159,7 @@ if __name__ == "__main__":
     list_only = config['zypper']['list_only']
 
     emitter = config['emitters']['emitter']
+    emit_on = str.lower(config['emitters']['emit_on'])
     email_to = config['email']['email_to']
     token = config['telegram']['token']
     chat_id = config['telegram']['chat_id']
@@ -165,10 +177,17 @@ if __name__ == "__main__":
 
     body = compose_body(time_start, refresh_output, install_output, list_output)
 
+    should_emit = True
+    if emit_on == 'update':
+        should_emit = update_occurred or error_occurred
+    elif emit_on == 'error':
+        should_emit = error_occurred
+
     # For emails only
     subject = "zypper-automatic"
 
-    if str.lower(emitter) == 'email':
-        send_email(body, subject, email_to)
-    elif str.lower(emitter) == 'telegram':
-        send_telegram(body, token, chat_id)
+    if should_emit:
+        if str.lower(emitter) == 'email':
+            send_email(body, subject, email_to)
+        elif str.lower(emitter) == 'telegram':
+            send_telegram(body, token, chat_id)

@@ -61,9 +61,12 @@ list_only = false
 ```toml
 [emitters]
 emitter =
+emit_on = always
 ```
 
 The `emitter` refers to one of the message services listed in the subsections below.
+
+The `emit_on` setting defines when the message should be emitted. Valid options are 'always' (the default), 'update' which will trigger only when something actually happens (either an update or an error), and 'error' which will only send notifications when an error occurrs.
 
 #### Email
 
