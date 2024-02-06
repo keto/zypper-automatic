@@ -101,12 +101,12 @@ def install_patches(categories, with_interactive):
         output = subprocess.check_output(command, env={'LANG': 'POSIX'})
         update_occurred = b"Nothing to do." not in output
     except subprocess.CalledProcessError as err:
+        output = err.output
         if err.returncode == 102:
             logging.info("Reboot required.")
-            output = err.output
         else:
             logging.warning("An error occured while installing patches. See output below.")
-            print(err.output)
+            print(output)
             error_occurred = True
 
     return output
